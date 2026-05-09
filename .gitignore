@@ -1,0 +1,23 @@
+﻿# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Outputs
+outputs/
+*.log
+
+# Local textbooks and large files
+*.pdf
+textbooks/*.pdf
+
+# System
+.DS_Store
+Thumbs.db
