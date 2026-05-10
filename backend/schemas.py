@@ -214,6 +214,17 @@ class GraphUpdateResponse(BaseModel):
     feedback_record: dict[str, Any] = Field(default_factory=dict)
 
 
+class GraphExpandRequest(BaseModel):
+    graph: dict[str, Any]
+    node_id: str
+    mode: Literal["single_book", "integrated"] = "single_book"
+
+
+class GraphExpandResponse(BaseModel):
+    graph: dict[str, Any]
+    patch: dict[str, Any]
+
+
 class NodeDetailRequest(BaseModel):
     node_id: str
     node_name: str

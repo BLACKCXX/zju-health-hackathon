@@ -46,6 +46,8 @@ export interface GraphNode {
   frequency: number
   confidence: number
   status: GraphStatus
+  expandable?: boolean
+  expanded?: boolean
   x?: number | null
   y?: number | null
 }

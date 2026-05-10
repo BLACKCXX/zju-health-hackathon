@@ -1,5 +1,32 @@
 # HealthPDF Agent：学科知识整合智能体
 
+## 一键部署
+
+```bash
+docker compose up -d --build
+```
+
+访问前端：
+
+```text
+http://localhost:15173
+```
+
+后端健康检查：
+
+```text
+http://localhost:18000/api/health
+```
+
+运行测试：
+
+```bash
+pytest tests/
+```
+
+样例整合报告：[report/sample_integration_炎症.md](report/sample_integration_炎症.md)
+
+
 HealthPDF Agent 是面向 7 本医学教材的"学科知识整合智能体"Demo。系统以 RAG 作为统一证据层，支持教材管理、标准 RAG Pipeline、知识小回答、跨教材知识图谱工作台、节点详情、教师反馈和 Markdown 整合报告导出。
 
 ## 三大核心模式

@@ -11,6 +11,7 @@ from src.parser_agent import build_chunks_from_textbooks
 from src.retrieval_agent import RetrievalAgent
 from src.router_agent import route_user_intent
 from src.vector_store import VectorStore, get_saved_index_metadata
+from src.textbook_store import TextbookStore
 
 from .schemas import (
     AskRequest,
@@ -36,6 +37,8 @@ from .schemas import (
     SingleBookGraphRequest,
     SingleBookGraphResponse,
     StatusResponse,
+    GraphExpandRequest,
+    GraphExpandResponse,
 )
 
 
@@ -117,22 +120,133 @@ def graph_build_service(request: GraphBuildRequest) -> GraphBuildResponse:
 
 
 def graph_single_book_service(request: SingleBookGraphRequest) -> SingleBookGraphResponse:
-    """Generate a knowledge graph for a single textbook."""
-    from src.graph_agent import build_single_book_graph
-    evidence = RetrievalAgent().search_for_single_book(request.textbook_id, request.chapter_id, top_k=request.top_k)
-    graph = build_single_book_graph(request.textbook_id, request.chapter_id, evidence)
+    """Generate a knowledge graph for a single textbook.
+
+    If chapter_id is provided, generates graph for that specific chapter.
+    Otherwise builds a top-level graph with textbook as center node and
+    its parsed chapters as level-1 nodes.
+    """
+    store = TextbookStore()
+    textbook_data = store.load(request.textbook_id)
+    book_title = textbook_data.get("title", request.textbook_id) if textbook_data else request.textbook_id
+    chapters = textbook_data.get("chapters", []) if textbook_data else []
+
+    topic = book_title
+
+    # If a specific chapter is requested, use RAG to build a focused graph
+    if request.chapter_id and chapters:
+        selected_ch = next((c for c in chapters if c.get("chapter_id") == request.chapter_id), None)
+        if selected_ch:
+            topic = selected_ch.get("title", request.chapter_id)
+            evidence = RetrievalAgent().search(f"{book_title} {topic}", top_k=request.top_k or 20)
+            graph = build_graph(topic, evidence)
+            # Add chapter info to the root node
+            if graph.get("nodes"):
+                graph["nodes"][0]["chapter"] = topic
+                graph["nodes"][0]["page"] = selected_ch.get("page_start", 0)
+        else:
+            evidence = RetrievalAgent().search(f"教材:{book_title} {request.chapter_id}", top_k=request.top_k or 20)
+            graph = build_graph(topic, evidence)
+    elif chapters:
+        # Build graph from parsed chapter structure
+        graph = _build_graph_from_chapters(book_title, chapters, request.textbook_id)
+    else:
+        evidence = RetrievalAgent().search(f"教材:{topic}", top_k=request.top_k or 20)
+        graph = build_graph(topic, evidence)
+
+    graph["mode"] = "single_book"
+    graph["textbook_id"] = request.textbook_id
     return SingleBookGraphResponse(
         graph=graph,
         evidence=graph.get("evidence", []),
-        agent_trace={"intent": "single_book_graph", "textbook_id": request.textbook_id, "retrieved_count": len(evidence)},
+        agent_trace={"intent": "single_book_graph", "textbook_id": request.textbook_id, "chapter_id": request.chapter_id, "retrieved_count": len(graph.get("evidence", []))},
     )
+
+
+def _build_graph_from_chapters(book_title: str, chapters: list, textbook_id: str) -> dict:
+    """Build a graph with book as center node and chapters as level-1 nodes."""
+    from src.graph_agent import _graph_evidence
+
+    nodes = []
+    edges = []
+    graph_evidence = []
+
+    # Root node: the textbook itself
+    root_id = "node_001"
+    nodes.append({
+        "id": root_id,
+        "name": book_title,
+        "type": "book",
+        "level": 0,
+        "summary": f"医学教材：{book_title}，共 {len(chapters)} 个章节",
+        "book_sources": [book_title],
+        "evidence_ids": [],
+        "confidence": 0.95,
+        "status": "normal",
+        "expandable": True,
+        "expanded": False,
+        "x": None,
+        "y": None,
+    })
+
+    # Level-1 nodes: each chapter
+    for idx, ch in enumerate(chapters[:30], start=2):  # limit to 30 chapters
+        node_id = f"node_{idx:03d}"
+        ch_title = ch.get("title", f"章节{idx - 1}")
+        page_start = ch.get("page_start", 0)
+        page_end = ch.get("page_end", page_start)
+        char_count = ch.get("char_count", 0)
+
+        nodes.append({
+            "id": node_id,
+            "name": ch_title,
+            "type": "chapter",
+            "level": 1,
+            "summary": f"{ch_title}，第 {page_start}-{page_end} 页，字数 {char_count}",
+            "book_sources": [book_title],
+            "evidence_ids": [],
+            "confidence": 0.85,
+            "status": "normal",
+            "chapter": ch_title,
+            "page": page_start,
+            "expandable": True,
+            "expanded": False,
+            "x": None,
+            "y": None,
+        })
+
+        edges.append({
+            "id": f"edge_{idx - 1:03d}",
+            "source": root_id,
+            "target": node_id,
+            "relation": "contains",
+            "label": "章节",
+            "summary": f"{book_title} 包含 {ch_title}",
+            "evidence_ids": [],
+            "confidence": 0.9,
+            "status": "normal",
+        })
+
+    # Compute integration
+    from src.integration_agent import summarize_integration
+    integrated_text = "；".join(n.get("name", "") for n in nodes)
+    return {
+        "topic": book_title,
+        "nodes": nodes,
+        "edges": edges,
+        "evidence": graph_evidence,
+        "integration": summarize_integration(book_title, graph_evidence, integrated_text),
+        "feedback_records": [],
+        "mode": "single_book",
+        "textbook_id": textbook_id,
+    }
 
 
 def graph_integrated_service(request: IntegratedGraphRequest) -> IntegratedGraphResponse:
     """Generate an integrated knowledge graph across multiple textbooks."""
-    from src.graph_agent import build_integrated_graph
-    evidence = RetrievalAgent().search_for_integration(request.topic, request.textbook_ids, request.top_k_per_book, request.global_top_k)
-    graph = build_integrated_graph(request.topic, request.textbook_ids, evidence)
+    evidence = RetrievalAgent().search_for_graph(request.topic, per_book_k=request.top_k_per_book, global_top_k=request.global_top_k)
+    graph = build_graph(request.topic, evidence)
+    graph["mode"] = "integrated"
     integration = graph.get("integration", {})
     return IntegratedGraphResponse(
         graph=graph,
@@ -143,14 +257,126 @@ def graph_integrated_service(request: IntegratedGraphRequest) -> IntegratedGraph
 
 
 def graph_update_service(request: GraphUpdateRequest) -> GraphUpdateResponse:
-    from src.graph_agent import apply_graph_instruction
+    from src.graph_agent import update_graph as do_update
+    topic = request.current_graph.get("topic", "知识图谱")
     evidence = RetrievalAgent().search_for_graph(request.instruction, global_top_k=20)
-    graph, patch = apply_graph_instruction(request.current_graph, request.instruction, evidence)
+    graph, patch = do_update(topic, request.instruction, request.current_graph, evidence)
     return GraphUpdateResponse(
         graph=graph,
         patch=patch,
         feedback_record={"instruction": request.instruction, "retrieved_count": len(evidence)},
     )
+
+
+def graph_expand_service(request: GraphExpandRequest) -> GraphExpandResponse:
+    """Expand a specific node in the graph.
+
+    For a chapter node: look up chapter content and expand sub-topics.
+    For a book node: show all chapter nodes.
+    For a concept node: use RAG to find related concepts.
+    """
+    graph = dict(request.current_graph)
+    graph["nodes"] = [dict(n) for n in graph.get("nodes", [])]
+    graph["edges"] = [dict(e) for e in graph.get("edges", [])]
+
+    target_node = next((n for n in graph["nodes"] if n.get("id") == request.node_id), None)
+    if not target_node:
+        return GraphExpandResponse(graph=graph, patch={"added_nodes": [], "added_edges": [], "updated_nodes": []})
+
+    added_nodes = []
+    added_edges = []
+    topic = graph.get("topic", "")
+    textbook_id = graph.get("textbook_id", "")
+
+    node_type = target_node.get("type", "")
+    node_name = target_node.get("name", "")
+
+    if node_type == "book":
+        # Book node: already expanded in single_book mode, no further expansion
+        return GraphExpandResponse(graph=graph, patch={"added_nodes": [], "added_edges": [], "updated_nodes": []})
+
+    if node_type == "chapter":
+        # Chapter node: expand to show sub-topics from RAG
+        book_title = target_node.get("book_sources", [topic])[0] if target_node.get("book_sources") else topic
+        search_query = f"{book_title} {node_name}"
+        evidence = RetrievalAgent().search(search_query, top_k=15)
+        sub_nodes = _build_concept_nodes_from_evidence(node_name, evidence, start_idx=len(graph["nodes"]) + 1)
+        for sn in sub_nodes:
+            sn["expandable"] = True
+            sn["expanded"] = False
+            added_nodes.append(sn)
+            added_edges.append({
+                "id": f"edge_{len(graph['edges']) + len(added_edges) + 1:03d}",
+                "source": request.node_id,
+                "target": sn["id"],
+                "relation": "contains",
+                "label": "包含",
+                "summary": f"{node_name} 包含 {sn['name']}",
+                "evidence_ids": sn.get("evidence_ids", []),
+                "confidence": sn.get("confidence", 0.8),
+                "status": "added",
+            })
+        # Mark current node as expanded
+        for n in graph["nodes"]:
+            if n["id"] == request.node_id:
+                n["expanded"] = True
+                break
+
+    else:
+        # Concept node: expand to show related concepts
+        evidence = RetrievalAgent().search(node_name, top_k=10)
+        sub_nodes = _build_concept_nodes_from_evidence(node_name, evidence, start_idx=len(graph["nodes"]) + 1)
+        for sn in sub_nodes:
+            sn["expandable"] = True
+            sn["expanded"] = False
+            added_nodes.append(sn)
+            added_edges.append({
+                "id": f"edge_{len(graph['edges']) + len(added_edges) + 1:03d}",
+                "source": request.node_id,
+                "target": sn["id"],
+                "relation": "related_to",
+                "label": "相关",
+                "summary": f"{node_name} 相关概念",
+                "evidence_ids": sn.get("evidence_ids", []),
+                "confidence": sn.get("confidence", 0.75),
+                "status": "added",
+            })
+        for n in graph["nodes"]:
+            if n["id"] == request.node_id:
+                n["expanded"] = True
+                break
+
+    graph["nodes"].extend(added_nodes)
+    graph["edges"].extend(added_edges)
+    patch = {
+        "added_nodes": added_nodes,
+        "added_edges": added_edges,
+        "updated_nodes": [target_node],
+    }
+    return GraphExpandResponse(graph=graph, patch=patch)
+
+
+def _build_concept_nodes_from_evidence(parent_name: str, evidence: list, start_idx: int) -> list[dict]:
+    """Build concept nodes from RAG evidence."""
+    from src.graph_agent import _extract_concepts, _graph_evidence
+
+    concepts_data = _extract_concepts(parent_name, evidence)
+    nodes = []
+    for idx, concept in enumerate(concepts_data[:8], start=start_idx):
+        nodes.append({
+            "id": f"node_{idx:03d}",
+            "name": concept.get("name", ""),
+            "type": concept.get("type", "concept"),
+            "level": 2,
+            "summary": concept.get("summary", "")[:200],
+            "book_sources": concept.get("books", []),
+            "evidence_ids": concept.get("evidence_ids", []),
+            "confidence": concept.get("confidence", 0.75),
+            "status": "added",
+            "x": None,
+            "y": None,
+        })
+    return nodes
 
 
 def node_detail_service(request: NodeDetailRequest) -> NodeDetailResponse:

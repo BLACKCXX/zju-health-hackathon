@@ -134,6 +134,23 @@ export async function updateGraph(instruction: string, currentGraph: GraphJSON):
   }
 }
 
+export async function expandGraph(
+  currentGraph: GraphJSON,
+  nodeId: string,
+  mode: 'single_book' | 'integrated' = 'single_book',
+): Promise<{ graph: GraphJSON; patch: { added_nodes: any[]; added_edges: any[]; updated_nodes: any[] } }> {
+  try {
+    const response = await client.post('/api/graph/expand', {
+      graph: currentGraph,
+      node_id: nodeId,
+      mode,
+    })
+    return response.data
+  } catch (error) {
+    throw friendlyError(error)
+  }
+}
+
 export async function getNodeDetail(nodeId: string, nodeName: string, graph: GraphJSON): Promise<NodeDetailResponse> {
   try {
     const response = await client.post<NodeDetailResponse>('/api/graph/node-detail', {

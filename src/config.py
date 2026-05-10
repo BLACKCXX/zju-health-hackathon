@@ -12,6 +12,7 @@ DEFAULT_MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1/"
 DEFAULT_MODELSCOPE_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
 FALLBACK_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_VLM_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class Settings:
     rag_top_k: int
     graph_top_k_per_book: int
     graph_global_top_k: int
+    vlm_model: str
 
 
 def _env(name: str, default: str = "") -> str:
@@ -119,6 +121,7 @@ def get_settings() -> Settings:
         rag_top_k=_int_env("RAG_TOP_K", 8),
         graph_top_k_per_book=_int_env("GRAPH_TOP_K_PER_BOOK", 5),
         graph_global_top_k=_int_env("GRAPH_GLOBAL_TOP_K", 30),
+        vlm_model=_env("VLM_MODEL") or DEFAULT_VLM_MODEL,
     )
 
 

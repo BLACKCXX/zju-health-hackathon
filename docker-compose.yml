@@ -1,0 +1,23 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "18000:18000"
+    env_file:
+      - .env
+    volumes:
+      - ./textbooks:/app/textbooks
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+      - ./indexes:/app/indexes
+      - ./outputs:/app/outputs
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:18000
+    ports:
+      - "15173:80"
+    depends_on:
+      - backend

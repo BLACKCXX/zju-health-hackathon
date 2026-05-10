@@ -12,6 +12,8 @@ from .schemas import (
     FeedbackResponse,
     GraphBuildRequest,
     GraphBuildResponse,
+    GraphExpandRequest,
+    GraphExpandResponse,
     GraphUpdateRequest,
     GraphUpdateResponse,
     HealthResponse,
@@ -29,6 +31,7 @@ from .services import (
     feedback_service,
     get_status,
     graph_build_service,
+    graph_expand_service,
     graph_update_service,
     node_detail_service,
     report_export_service,
@@ -95,6 +98,14 @@ def graph_update(request: GraphUpdateRequest) -> GraphUpdateResponse:
         return graph_update_service(request)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"图谱更新失败：{exc}") from exc
+
+
+@app.post("/api/graph/expand", response_model=GraphExpandResponse)
+def graph_expand(request: GraphExpandRequest) -> GraphExpandResponse:
+    try:
+        return graph_expand_service(request)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"图谱节点展开失败：{exc}") from exc
 
 
 @app.post("/api/graph/node-detail", response_model=NodeDetailResponse)

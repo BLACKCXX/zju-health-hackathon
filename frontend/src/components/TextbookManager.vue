@@ -27,7 +27,7 @@
         <label for="file-input" class="upload-label">
           <cloud-upload-outlined style="font-size: 36px; color: #2563eb" />
           <p>拖拽文件到此处，或 <span class="link">点击选择</span></p>
-          <p class="hint">支持 PDF、Markdown、TXT 格式</p>
+          <p class="hint">支持 PDF、Markdown、TXT、Word .docx 格式</p>
         </label>
       </div>
 
@@ -204,6 +204,9 @@ const drawerVisible = ref(false)
 const drawerLoading = ref(false)
 const selectedTextbookId = ref<string | null>(null)
 const chapterDetail = ref<TextbookDetailResponse | null>(null)
+
+// Derive the textbook displayed in drawer from chapterDetail (loaded from API)
+const selectedTextbook = computed(() => chapterDetail.value)
 
 const columns = [
   { title: '文件名', dataIndex: 'filename', key: 'filename' },

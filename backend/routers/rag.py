@@ -32,7 +32,7 @@ rag_router = APIRouter(prefix="/api/rag", tags=["rag"])
 
 @textbooks_router.post("/upload", response_model=TextbookUploadResponse)
 async def upload_textbooks(files: list[UploadFile] = File(...)) -> TextbookUploadResponse:
-    """Upload textbook files (PDF, MD, TXT)."""
+    """Upload textbook files (PDF, MD, TXT, DOCX)."""
     settings = get_settings()
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -81,7 +81,7 @@ def list_textbooks() -> list[TextbookSummary]:
         )
 
     if settings.textbook_dir.exists():
-        for ext in ["*.pdf", "*.md", "*.txt"]:
+        for ext in ["*.pdf", "*.md", "*.txt", "*.docx"]:
             for path in settings.textbook_dir.glob(ext):
                 tid = generate_textbook_id(path.name)
                 if tid in seen_ids:
@@ -91,7 +91,7 @@ def list_textbooks() -> list[TextbookSummary]:
                 summaries.append(make_summary(path, stored))
 
     if settings.upload_dir.exists():
-        for ext in ["*.pdf", "*.md", "*.txt"]:
+        for ext in ["*.pdf", "*.md", "*.txt", "*.docx"]:
             for path in settings.upload_dir.glob(ext):
                 tid = generate_textbook_id(path.name)
                 if tid in seen_ids:

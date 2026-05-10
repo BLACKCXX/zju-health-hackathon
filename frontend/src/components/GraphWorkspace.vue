@@ -115,8 +115,10 @@ import { message } from 'ant-design-vue'
 import {
   buildIntegratedGraph,
   buildSingleBookGraph,
+  expandGraph,
   exportReport,
   getNodeDetail,
+  getTextbookDetail,
   listTextbooks,
   sendFeedback,
   updateGraph,
@@ -157,11 +159,38 @@ const graph = ref<GraphJSON | null>(null)
 const selectedNode = ref<GraphNode | null>(null)
 const nodeDetail = ref<any | null>(null)
 
-const chapters = computed(() => {
-  const tb = textbooks.value.find((t) => t.textbook_id === singleBookParams.value.textbook_id)
-  if (!tb) return []
-  return (tb as any).chapters || []
-})
+const chapters = ref<any[]>([])
+
+async function loadChaptersForBook(textbookId: string) {
+  if (!textbookId) {
+    chapters.value = []
+    return
+  }
+  try {
+    const detail = await getTextbookDetail(textbookId)
+    chapters.value = (detail?.chapters || []).slice(0, 100).map((ch: any) => ({
+      chapter_id: ch.chapter_id || ch.id,
+      title: ch.title || ch.name || '',
+      page_start: ch.page_start || ch.start_page || 0,
+      page_end: ch.page_end || ch.end_page || 0,
+    }))
+  } catch (error) {
+    console.error('加载章节失败', error)
+    chapters.value = []
+  }
+}
+
+watch(
+  () => singleBookParams.value.textbook_id,
+  (newId) => {
+    if (newId) {
+      loadChaptersForBook(newId)
+    } else {
+      chapters.value = []
+    }
+  },
+  { immediate: true },
+)
 
 async function loadTextbooks() {
   loadingTextbooks.value = true
@@ -234,6 +263,30 @@ async function applyInstruction() {
 }
 
 async function selectNode(node: GraphNode) {
+  // If already expanded, just select (no double-expand)
+  if (node.expandable === true && node.expanded !== true) {
+    // Expand the node
+    const mode = activeTab.value === 'single' ? 'single_book' : 'integrated'
+    try {
+      const result = await expandGraph(graph.value!, node.id, mode)
+      // Merge new nodes and edges into graph
+      if (result.graph && result.patch) {
+        const existingIds = new Set(graph.value!.nodes.map((n: any) => n.id))
+        const newNodes = (result.patch.added_nodes || []).filter((n: any) => !existingIds.has(n.id))
+        const newEdges = (result.patch.added_edges || []).filter((e: any) => {
+          const src = result.graph.edges.find((re: any) => re.id === e.id)
+          return src && !graph.value!.edges.some((ge: any) => ge.id === e.id)
+        })
+        graph.value = result.graph
+        // Highlight the new nodes briefly
+        message.success(`已展开 ${newNodes.length} 个节点`)
+      }
+    } catch (error) {
+      message.error((error as Error).message)
+    }
+  }
+
+  // Select the node and load detail
   selectedNode.value = node
   nodeDetail.value = null
   if (!graph.value) return

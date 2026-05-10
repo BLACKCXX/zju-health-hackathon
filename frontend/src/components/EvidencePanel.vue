@@ -32,8 +32,13 @@ const filteredEvidence = computed(() => {
 
 <style scoped>
 .quote-text {
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.6;
+  font-size: 14px;
+  color: #111827;
+  line-height: 1.75;
+}
+:deep(.ant-collapse-header) {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1f2937;
 }
 </style>

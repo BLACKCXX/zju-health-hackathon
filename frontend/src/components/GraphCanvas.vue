@@ -38,6 +38,7 @@ const emit = defineEmits<{
 const searchKw = ref('')
 
 const colorMap: Record<string, string> = {
+  book: '#1d4ed8',
   concept: '#2563eb',
   mechanism: '#7c3aed',
   disease: '#dc2626',
@@ -51,7 +52,9 @@ const colorMap: Record<string, string> = {
 }
 
 const typeSizeMap: Record<string, number> = {
+  book: 70,
   concept: 60,
+  chapter: 55,
   mechanism: 55,
   disease: 65,
   symptom: 50,
@@ -100,10 +103,18 @@ const option = computed(() => {
 
   return {
     tooltip: {
+      backgroundColor: '#fff',
+      borderColor: '#e5e7eb',
+      borderWidth: 1,
+      textStyle: {
+        color: '#111827',
+        fontSize: 13,
+        lineHeight: 20,
+      },
       formatter: (p: any) => {
         const n = p.data as GraphNode
         if (!n) return p.data?.name || ''
-        return `<b>${n.name}</b><br/><span style="color:#64748b">${n.type} | 置信度 ${(n.confidence * 100).toFixed(0)}%</span><br/>${n.summary || ''}`
+        return `<b style="font-size:14px;color:#111827">${n.name}</b><br/><span style="color:#64748b;font-size:12px">${n.type} | 置信度 ${(n.confidence * 100).toFixed(0)}%</span><br/><span style="color:#374151;font-size:13px;line-height:1.6">${n.summary || ''}</span>`
       },
     },
     series: [
@@ -112,7 +123,7 @@ const option = computed(() => {
         layout: 'force',
         roam: true,
         draggable: true,
-        label: { show: true, formatter: '{b}', fontSize: 12, color: '#1e293b' },
+        label: { show: true, formatter: '{b}', fontSize: 13, color: '#1e293b', fontWeight: 500 },
         force: { repulsion: 400, edgeLength: 130, gravity: 0.2 },
         edgeSymbol: ['circle', 'arrow'],
         data: nodes.map((node) => ({

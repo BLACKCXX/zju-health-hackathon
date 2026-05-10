@@ -41,13 +41,20 @@ def infer_chapter(text: str) -> str:
 
 
 def _generate_textbook_id(filename: str) -> str:
-    """Generate a textbook ID from filename."""
-    # Use clean name without numbers prefix
-    clean = re.sub(r"^\d+_", "", filename)
-    clean = re.sub(r"\.(pdf|md|txt)$", "", clean, flags=re.IGNORECASE)
-    # Replace non-alphanumeric with underscore
-    clean = re.sub(r"[^\w]", "_", clean)
-    return f"book_{clean[:20]}"
+    """Generate a textbook ID from filename.
+
+    Uses Path(filename).stem to preserve prefixes like "01_局部解剖学".
+    Kept as internal helper for backward compatibility with existing chunk IDs.
+    """
+    stem = Path(filename).stem
+    cleaned = re.sub(r"[^\w]", "_", stem)
+    cleaned = re.sub(r"_+", "_", cleaned)
+    cleaned = cleaned.strip("_")
+    if len(cleaned) < 3:
+        hash_suffix = hashlib.md5(filename.encode()).hexdigest()[:8]
+        return f"book_{hash_suffix}"
+    id_part = cleaned[:20]
+    return f"book_{id_part}"
 
 
 def parse_single_file(file_path: Path, max_pages: int | None = None) -> dict[str, Any]:
@@ -98,7 +105,7 @@ def parse_textbook_files(
         if not source_dir.exists():
             return [], [{"filename": str(source_dir), "error": "Directory not found"}]
 
-        for ext in ["*.pdf", "*.md", "*.txt"]:
+        for ext in ["*.pdf", "*.md", "*.txt", "*.docx"]:
             for file_path in source_dir.glob(ext):
                 result = parse_single_file(file_path, max_pages=max_pages)
                 if result["parse_status"] == "failed":
