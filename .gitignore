@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.pyc
 .venv/
@@ -10,13 +10,23 @@ node_modules/
 dist/
 .next/
 
-# Outputs
-outputs/
-*.log
-
-# Local textbooks and large files
+# Local textbooks and uploaded files
+textbooks/
+uploads/
+!uploads/
+uploads/*
+!uploads/.gitkeep
 *.pdf
-textbooks/*.pdf
+
+# Outputs and indexes
+outputs/
+!outputs/
+outputs/*
+!outputs/.gitkeep
+indexes/*.pkl
+indexes/*.joblib
+indexes/*.npy
+*.log
 
 # System
 .DS_Store

@@ -1,0 +1,8 @@
+gradio
+openai
+python-dotenv
+pymupdf
+scikit-learn
+numpy
+pandas
+tqdm
