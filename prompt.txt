@@ -21,3 +21,14 @@
    - 当前不足与后续优化方向
 6. 如果某些功能没有在代码中实现，请不要写成已经实现，只能写成“后续可扩展”。
 7. 最后生成一版完整 Markdown。
+
+
+
+cd /mnt/e/Hackthon
+conda activate zju_hackathon
+uvicorn backend.main:app --host 0.0.0.0 --port 18000 --reload
+
+
+
+cd /mnt/e/Hackthon/frontend
+npm run dev -- --host 0.0.0.0 --port 15173
