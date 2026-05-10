@@ -1,5 +1,17 @@
 # HealthPDF Agent：学科知识整合智能体
 
+## P2 技术报告
+
+Small-to-Big RAG 实验脚本：`experiments/small_to_big_rag/`
+
+技术报告：`report/p2_small_to_big_rag_report.md`
+
+复现实验：
+
+```bash
+python experiments/small_to_big_rag/run_experiment.py && python experiments/small_to_big_rag/analyze_results.py
+```
+
 ## 一键部署
 
 ```bash

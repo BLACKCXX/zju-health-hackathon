@@ -1,0 +1,4 @@
+﻿strategy,hit@5,keyword_recall,avg_context_chars,avg_latency_ms,evidence_count,source_diversity,citation_completeness
+baseline_medium,1.0,0.7153,3329.5,82.3518,5.0,1.0,1.0
+small_only,0.9167,0.5972,1449.0,89.1287,5.0,1.0,1.0
+small_to_big,1.0,0.7292,4876.0,86.4313,4.3333,1.0,1.0

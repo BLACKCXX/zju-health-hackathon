@@ -1,0 +1,98 @@
+[
+  {
+    "id": "q001",
+    "question": "炎症是什么？",
+    "expected_keywords": ["炎症", "损伤因子", "防御性反应"],
+    "expected_topic": "炎症",
+    "expected_book_hint": "病理学",
+    "type": "definition"
+  },
+  {
+    "id": "q002",
+    "question": "炎症的基本病理变化有哪些？",
+    "expected_keywords": ["变质", "渗出", "增生"],
+    "expected_topic": "炎症",
+    "expected_book_hint": "病理学",
+    "type": "classification"
+  },
+  {
+    "id": "q003",
+    "question": "细胞水肿的发生机制是什么？",
+    "expected_keywords": ["细胞水肿", "钠水", "线粒体"],
+    "expected_topic": "细胞损伤",
+    "expected_book_hint": "病理学",
+    "type": "mechanism"
+  },
+  {
+    "id": "q004",
+    "question": "可逆性细胞损伤包括哪些表现？",
+    "expected_keywords": ["可逆性损伤", "细胞水肿", "脂肪变"],
+    "expected_topic": "细胞损伤",
+    "expected_book_hint": "病理学",
+    "type": "classification"
+  },
+  {
+    "id": "q005",
+    "question": "坏死的基本形态学改变是什么？",
+    "expected_keywords": ["坏死", "核固缩", "核碎裂", "核溶解"],
+    "expected_topic": "坏死",
+    "expected_book_hint": "病理学",
+    "type": "morphology"
+  },
+  {
+    "id": "q006",
+    "question": "肿瘤是什么？",
+    "expected_keywords": ["肿瘤", "异常增生", "新生物"],
+    "expected_topic": "肿瘤",
+    "expected_book_hint": "病理学",
+    "type": "definition"
+  },
+  {
+    "id": "q007",
+    "question": "良性肿瘤和恶性肿瘤有什么区别？",
+    "expected_keywords": ["良性肿瘤", "恶性肿瘤", "分化", "转移"],
+    "expected_topic": "肿瘤",
+    "expected_book_hint": "病理学",
+    "type": "comparison"
+  },
+  {
+    "id": "q008",
+    "question": "高血压的主要机制是什么？",
+    "expected_keywords": ["高血压", "血压", "外周阻力"],
+    "expected_topic": "高血压",
+    "expected_book_hint": "病理学",
+    "type": "mechanism"
+  },
+  {
+    "id": "q009",
+    "question": "血栓形成的条件有哪些？",
+    "expected_keywords": ["血栓形成", "内皮损伤", "血流", "凝血"],
+    "expected_topic": "血栓",
+    "expected_book_hint": "病理学",
+    "type": "classification"
+  },
+  {
+    "id": "q010",
+    "question": "免疫性疾病的基本特点是什么？",
+    "expected_keywords": ["免疫", "超敏反应", "自身免疫"],
+    "expected_topic": "免疫性疾病",
+    "expected_book_hint": "病理学",
+    "type": "features"
+  },
+  {
+    "id": "q011",
+    "question": "水肿形成的原因有哪些？",
+    "expected_keywords": ["水肿", "静脉压", "血浆胶体渗透压", "淋巴"],
+    "expected_topic": "水肿",
+    "expected_book_hint": "病理学",
+    "type": "mechanism"
+  },
+  {
+    "id": "q012",
+    "question": "局部解剖学研究什么内容？",
+    "expected_keywords": ["局部解剖学", "人体", "结构"],
+    "expected_topic": "局部解剖学",
+    "expected_book_hint": "局部解剖学",
+    "type": "definition"
+  }
+]
