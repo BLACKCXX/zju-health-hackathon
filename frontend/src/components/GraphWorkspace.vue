@@ -66,6 +66,17 @@
         @node-click="selectNode"
       />
 
+      <SankeyEvidenceFlow
+        v-if="graph"
+        :graph="graph"
+        :title="activeTab === 'integrated' || graph.mode === 'integrated' ? '跨教材证据流' : 'RAG 证据流'"
+      />
+
+      <IntegrationComparePanel
+        v-if="graph && (activeTab === 'integrated' || graph.mode === 'integrated')"
+        :graph="graph"
+      />
+
       <a-card class="soft-card" :bordered="false">
         <div class="control-row">
           <a-input
@@ -99,6 +110,7 @@
       <FeedbackPanel
         :target-id="selectedNode?.id || null"
         :target-type="selectedNode ? 'node' : null"
+        :feedback-record="latestFeedbackRecord"
         @feedback="handleFeedback"
       />
       <EvidencePanel
@@ -110,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   buildIntegratedGraph,
@@ -124,17 +136,18 @@ import {
   updateGraph,
 } from '../api/client'
 import type {
-  GraphJSON,
-  GraphNode,
   SingleBookGraphResponse,
   IntegratedGraphResponse,
 } from '../types/api'
+import type { GraphJSON, GraphNode } from '../types/graph'
 import type { TextbookSummary } from '../api/client'
 import EvidencePanel from './EvidencePanel.vue'
 import FeedbackPanel from './FeedbackPanel.vue'
 import GraphCanvas from './GraphCanvas.vue'
+import IntegrationComparePanel from './IntegrationComparePanel.vue'
 import NodeDetailPanel from './NodeDetailPanel.vue'
 import ReportExporter from './ReportExporter.vue'
+import SankeyEvidenceFlow from './SankeyEvidenceFlow.vue'
 
 const props = defineProps<{ initialTopic?: string }>()
 
@@ -158,6 +171,7 @@ const textbooks = ref<TextbookSummary[]>([])
 const graph = ref<GraphJSON | null>(null)
 const selectedNode = ref<GraphNode | null>(null)
 const nodeDetail = ref<any | null>(null)
+const latestFeedbackRecord = ref<Record<string, unknown> | null>(null)
 
 const chapters = ref<any[]>([])
 
@@ -308,7 +322,14 @@ async function handleFeedback(action: string, comment: string) {
       graph: graph.value,
     })
     graph.value = result.updated_graph
-    message.success('教师反馈已记录')
+    selectedNode.value = graph.value.nodes.find((node: any) => node.id === selectedNode.value?.id) || selectedNode.value
+    latestFeedbackRecord.value = result.feedback_record || null
+    const addedEvidenceCount = Number(result.feedback_record?.added_evidence_count || 0)
+    if (addedEvidenceCount > 0) {
+      message.success(`已根据教师反馈追加 ${addedEvidenceCount} 条教材 evidence。`)
+    } else {
+      message.success('教师反馈已记录')
+    }
   } catch (error) {
     message.error((error as Error).message)
   }

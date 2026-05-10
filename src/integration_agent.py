@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+SUPPLEMENT_KEYWORDS = ("补充", "增加", "加入", "完善", "缺少", "不完整")
+
 
 def compare_sources_for_node(node: dict, evidence_list: list[dict]) -> dict:
     evidence_ids = set(node.get("evidence_ids", []))
@@ -85,5 +87,114 @@ def apply_teacher_feedback(graph_state: dict, feedback_action: dict) -> tuple[di
         "before": before,
         "after": after,
     }
+    if target_type == "node" and action != "delete" and _should_retrieve_for_feedback(feedback_action.get("comment", "")):
+        retrieval_record = _supplement_node_evidence(graph, target_id, feedback_action.get("comment", ""))
+        record.update(retrieval_record)
+        after = next((dict(node) for node in graph["nodes"] if node.get("id") == target_id), None)
+        record["after"] = after
+
     graph["feedback_records"].append(record)
     return graph, record
+
+
+def _should_retrieve_for_feedback(comment: str) -> bool:
+    return bool(comment and any(keyword in comment for keyword in SUPPLEMENT_KEYWORDS))
+
+
+def _supplement_node_evidence(graph: dict, target_id: str, comment: str) -> dict:
+    node = next((item for item in graph.get("nodes", []) if item.get("id") == target_id), None)
+    if not node:
+        return {
+            "retrieval_triggered": False,
+            "added_evidence_count": 0,
+            "warning": "目标节点不存在，已仅记录教师反馈",
+        }
+
+    query = _build_feedback_query(graph, node, comment)
+    try:
+        from .retrieval_agent import RetrievalAgent
+
+        new_evidence = RetrievalAgent().search(query, top_k=3)
+    except Exception:
+        return {
+            "retrieval_triggered": False,
+            "added_evidence_count": 0,
+            "warning": "检索失败，已仅记录教师反馈",
+        }
+    if not new_evidence:
+        return {
+            "retrieval_triggered": False,
+            "added_evidence_count": 0,
+            "warning": "检索失败，已仅记录教师反馈",
+        }
+
+    graph["evidence"] = list(graph.get("evidence", []))
+    existing_ids = {item.get("evidence_id") for item in graph["evidence"]}
+    existing_chunks = {item.get("chunk_id") for item in graph["evidence"] if item.get("chunk_id")}
+    node["evidence_ids"] = list(node.get("evidence_ids", []))
+
+    added_count = 0
+    for item in new_evidence:
+        if item.get("chunk_id") and item.get("chunk_id") in existing_chunks:
+            evidence_id = next(
+                (old.get("evidence_id") for old in graph["evidence"] if old.get("chunk_id") == item.get("chunk_id")),
+                "",
+            )
+            if evidence_id and evidence_id not in node["evidence_ids"]:
+                node["evidence_ids"].append(evidence_id)
+            continue
+
+        evidence_id = item.get("evidence_id") or _next_feedback_evidence_id(existing_ids)
+        if evidence_id in existing_ids:
+            evidence_id = _next_feedback_evidence_id(existing_ids)
+        existing_ids.add(evidence_id)
+        if item.get("chunk_id"):
+            existing_chunks.add(item.get("chunk_id"))
+
+        graph["evidence"].append(
+            {
+                "evidence_id": evidence_id,
+                "book": item.get("book") or item.get("textbook", ""),
+                "textbook": item.get("book") or item.get("textbook", ""),
+                "source_file": item.get("source_file", ""),
+                "chapter": item.get("chapter", ""),
+                "page": int(item.get("page") or 0),
+                "quote": item.get("quote") or item.get("text", "")[:260],
+                "chunk_id": item.get("chunk_id", ""),
+                "score": float(item.get("score") or 0.0),
+            }
+        )
+        if evidence_id not in node["evidence_ids"]:
+            node["evidence_ids"].append(evidence_id)
+        added_count += 1
+
+    if added_count > 0:
+        supplement_note = "已根据教师反馈补充相关教材证据。"
+        summary = str(node.get("summary") or "")
+        if supplement_note not in summary:
+            node["summary"] = f"{summary} {supplement_note}".strip()
+        node["status"] = "updated"
+
+    return {
+        "retrieval_triggered": True,
+        "added_evidence_count": added_count,
+        "target_id": target_id,
+    }
+
+
+def _build_feedback_query(graph: dict, node: dict, comment: str) -> str:
+    parts = [
+        str(graph.get("topic") or ""),
+        str(node.get("name") or ""),
+        comment,
+    ]
+    return " ".join(part for part in parts if part).strip()
+
+
+def _next_feedback_evidence_id(existing_ids: set) -> str:
+    index = 1
+    while True:
+        evidence_id = f"ev_fb_{index:03d}"
+        if evidence_id not in existing_ids:
+            return evidence_id
+        index += 1

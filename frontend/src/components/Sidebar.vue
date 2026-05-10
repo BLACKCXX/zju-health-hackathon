@@ -104,8 +104,8 @@ function beforeUpload() {
 
 function submitUpload() {
   const files = fileList.value
-    .map((item) => item.originFileObj)
-    .filter((item): item is File => Boolean(item))
+    .map((item) => item.originFileObj as File | undefined)
+    .filter((file): file is File => !!file)
   emit('upload-pdf', files)
 }
 </script>

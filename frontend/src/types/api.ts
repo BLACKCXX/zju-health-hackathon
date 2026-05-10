@@ -26,6 +26,34 @@ export interface Citation {
   quote: string
 }
 
+export interface RouteInfo {
+  intent?: string
+  topic?: string | null
+  keywords?: string[]
+  expanded_query?: string
+  answer_focus?: string
+  graph_mode?: string
+  need_retrieval?: boolean
+  confidence?: number
+  [key: string]: unknown
+}
+
+export interface RetrievedChunk {
+  chunk_id?: string
+  textbook?: string
+  book?: string
+  source_file: string
+  chapter?: string
+  page?: number
+  page_start?: number
+  page_end?: number
+  text: string
+  quote?: string
+  relevance_score?: number
+  score?: number
+  [key: string]: unknown
+}
+
 export interface Flashcard {
   title: string
   definition: string

@@ -217,7 +217,7 @@ export async function uploadTextbooks(files: File[]): Promise<{ success: boolean
   }
 }
 
-export async function parseTextbooks(filenames: string[]): Promise<{ success: boolean; textbooks: TextbookSummary[]; errors: { filename: string; error: string }[] }> {
+export async function parseTextbooks(filenames: string[]): Promise<{ success: boolean; message?: string; textbooks: TextbookSummary[]; errors: { filename: string; error: string }[] }> {
   try {
     const response = await client.post('/api/textbooks/parse', { filenames })
     return response.data

@@ -313,13 +313,15 @@ Retrieval Agent 是所有生成任务的单一入口。任何 Agent 的输出都
 
 反馈类型：`keep` / `delete` / `split` / `merge` / `edit`
 
+教师反馈现在包含轻量证据补充闭环：当 `comment` 中出现"补充"、"增加"、"加入"、"完善"、"缺少"、"不完整"等词时，`apply_teacher_feedback` 会基于 `topic + node.name + comment` 构造 query，调用 `RetrievalAgent.search(query, top_k=3)` 检索新的教材 evidence。新增 evidence 会追加到 `graph.evidence`，其 `evidence_id` 会追加到目标节点的 `evidence_ids`，节点摘要会补充"已根据教师反馈补充相关教材证据。"。如果检索失败，系统不会报错，会在 `feedback_record.warning` 中记录"检索失败，已仅记录教师反馈"。
+
 ```python
 # 输入 feedback_action
 {
-    "action": "delete",
+    "action": "edit",
     "target_type": "node",
     "target_id": "node_003",
-    "comment": "该节点证据不足，删除"
+    "comment": "缺少炎症介质相关证据，请补充"
 }
 
 # 输出
@@ -331,7 +333,9 @@ Retrieval Agent 是所有生成任务的单一入口。任何 Agent 的输出都
         "action": "delete",
         "target_type": "node",
         "target_id": "node_003",
-        "comment": "该节点证据不足，删除",
+        "comment": "缺少炎症介质相关证据，请补充",
+        "retrieval_triggered": true,
+        "added_evidence_count": 3,
         "before": {...},
         "after": {...}
     }
@@ -342,6 +346,7 @@ Retrieval Agent 是所有生成任务的单一入口。任何 Agent 的输出都
 - `delete` 操作仅标记 `status: deleted`，不物理删除节点，保留恢复可能
 - 每个 feedback 生成带时间戳的 record，可追溯、可审计
 - `split` / `merge` 操作标记 `status: highlighted`，等待教师进一步确认
+- 证据补充是局部增量更新，不触发全量图谱重建；新增 evidence 通过 `feedback_record` 可审计
 
 **当前实现状态**：已实现，包含压缩比计算和完整反馈流程。
 
@@ -511,18 +516,24 @@ class VectorStore:
 
 ### 5.5 Few-shot 设计
 
-Router Agent 的 prompt 内置了少量示例，但不依赖 few-shot 做强约束：
+Router Agent 使用 `ROUTER_FEW_SHOT_EXAMPLES` 做意图分类示范，覆盖：
 
-```
-{
-  "intent": "medical_question",
-  "need_pdf_search": true,
-  "search_keywords": ["肝炎", "病毒性肝炎", "HAV", "HBV"],
-  ...
-}
-```
+- 医学问答：如"肝炎症状有哪些？" → `intent=ask`
+- 跨教材图谱：如"帮我生成炎症的跨教材知识图谱" → `graph_mode=integrated`
+- 单本教材图谱：如"查看病理学第一章的知识结构" → `graph_mode=single_book`
+- 普通问候：如"你好" → `need_retrieval=false`
+- 图谱修改：如"把急性炎症和慢性炎症分开，不要合并" → `graph_operation=split`
 
-Answer Agent 的 prompt 通过格式指令（format_instruction）而非 few-shot 来控制输出结构。
+Router few-shot 不替代规则 fallback。LLM 调用失败、无 API key 或返回非 JSON 时，系统仍使用原规则路由，保证问答链路不因 prompt 失败中断。
+
+Graph Agent 使用 `GRAPH_EXTRACT_FEW_SHOT` 做 evidence → nodes / edges 的抽取示范。示例以"细胞水肿"为输入，展示如何抽取"ATP生成减少"、"钠泵功能障碍"等机制节点，以及 `causes` / `belongs_to` 关系。Graph Agent 仍要求：
+
+- 只根据 evidence 抽取，不编造教材外概念
+- 节点必须绑定 `evidence_ids`
+- LLM 抽取失败时回退到规则关键词抽取
+- `confidence` 优先使用 LLM 输出，缺失时使用默认值
+
+Answer Agent 的 prompt 通过格式指令（format_instruction）控制输出结构；Router 和 Graph 则通过 few-shot + JSON 约束降低幻觉和意图误判。
 
 ## 6. 跨教材整合策略
 
@@ -688,3 +699,47 @@ Answer Agent 的 prompt 通过格式指令（format_instruction）而非 few-sho
 | 压缩比展示 | compute_compression_ratio + integration_summary | `src/integration_agent.py:compute_compression_ratio` |
 | 闪卡生成 | generate_ask_answer 内置 flashcards 生成 | `src/answer_report_agent.py:generate_ask_answer` |
 | 状态监控 | /api/status + IndexStatusCard | `backend/main.py:get_status`, `frontend/src/components/IndexStatusCard.vue` |
+
+## 12. 本轮提分项补充
+
+### 12.1 Prompt 工程增强
+
+`src/prompts.py` 中显式维护 `ROUTER_FEW_SHOT_EXAMPLES`，覆盖 5 类高频输入：
+
+- 医学问答：`肝炎症状有哪些？` → `intent=ask`
+- 跨教材图谱：`帮我生成炎症的跨教材知识图谱` → `graph_mode=integrated`
+- 单本教材图谱：`查看病理学第一章的知识结构` → `graph_mode=single_book`
+- 普通问候：`你好` → `need_retrieval=false`
+- 图谱修改：`把急性炎症和慢性炎症分开，不要合并` → `graph_operation=split`
+
+Router Agent 在调用 LLM 时将 few-shot examples 拼入 prompt，用示例约束 intent、topic、keywords、need_retrieval 等字段，减少“问答 / 图谱 / 图谱更新”之间的误判。LLM 调用失败、无 API key 或返回非 JSON 时，仍回退到原规则路由。
+
+`GRAPH_EXTRACT_FEW_SHOT` 包含 3 个医学图谱抽取示例：
+
+- 细胞水肿：抽取 `pathological_change`、`mechanism`，关系包括 `causes`、`belongs_to`
+- 炎症：抽取 `concept`、`cause`、`pathological_change`，关系包括 `causes`、`contains`
+- 肿瘤：抽取 `disease`、`cause`、`mechanism`，关系包括 `causes`、`explains`、`is_a`
+
+Graph Agent 将该 few-shot 接入 LLM 抽取 prompt，要求返回 `nodes` 和 `edges` JSON。节点 `confidence` 优先采用 LLM 输出；缺失时使用默认值。节点仍必须绑定 `evidence_ids`，无法绑定 evidence 的节点会被丢弃。LLM 失败或格式错误时保留规则 fallback。
+
+### 12.2 教师反馈 evidence 闭环
+
+教师反馈不再只是记录状态。当 comment 中出现“补充 / 增加 / 加入 / 完善 / 缺少 / 不完整”等词时：
+
+1. `apply_teacher_feedback` 使用 `graph.topic + node.name + comment` 构造 query。
+2. 调用 `RetrievalAgent.search(query, top_k=3)` 进行轻量检索。
+3. 新 evidence 追加到 `graph.evidence`。
+4. 新 `evidence_id` 绑定到目标节点 `evidence_ids`。
+5. `node.summary` 追加“已根据教师反馈补充相关教材证据。”
+6. `feedback_record` 记录 `retrieval_triggered`、`added_evidence_count`、`target_id`。
+7. 前端显示“已根据教师反馈追加 N 条教材 evidence。”
+
+如果检索失败或没有索引，系统不会报错，会记录 warning 并保留原教师反馈功能。
+
+### 12.3 部署与工程质量
+
+- Docker + docker-compose：根目录提供后端 `Dockerfile`、`frontend/Dockerfile` 和 `docker-compose.yml`，支持 `docker compose up -d --build` 一键启动。
+- requirements 版本锁定：`requirements.txt` 使用 pinned versions，降低评审环境复现风险。
+- DOCX 解析支持：`src/document_parser.py::parse_docx` 使用 `python-docx` 读取 Heading 1/2 和“标题 1/2”，输出统一 textbook/chapter/pages 结构。
+- pytest 单元测试：`tests/test_chunker.py` 和 `tests/test_integration.py` 覆盖 chunk 切分、overlap 校验、压缩比和教师反馈 edit/delete 分支。
+- 样例报告：`report/sample_integration_炎症.md` 展示跨教材整合报告格式。

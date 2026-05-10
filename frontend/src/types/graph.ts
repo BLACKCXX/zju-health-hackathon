@@ -1,6 +1,9 @@
 export type GraphNodeType =
   | 'concept'
+  | 'definition'
   | 'mechanism'
+  | 'pathological_change'
+  | 'cause'
   | 'disease'
   | 'symptom'
   | 'diagnosis'
@@ -20,6 +23,13 @@ export type EdgeRelation =
   | 'contains'
   | 'applies_to'
   | 'causes'
+  | 'belongs_to'
+  | 'is_a'
+  | 'diagnosed_by'
+  | 'treated_by'
+  | 'complicates'
+  | 'prevents'
+  | 'contrasts_with'
   | 'associated_with'
   | 'explains'
 

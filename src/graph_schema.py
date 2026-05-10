@@ -7,6 +7,8 @@ NodeType = Literal[
     "concept",
     "definition",
     "mechanism",
+    "pathological_change",
+    "cause",
     "symptom",
     "disease",
     "diagnosis",
@@ -27,6 +29,8 @@ EdgeRelation = Literal[
     "complicates",
     "prevents",
     "explains",
+    "contains",
+    "is_a",
     "contrasts_with",
 ]
 

@@ -316,7 +316,7 @@ async function parseAll() {
     if (result.success) {
       message.success(`成功解析 ${result.textbooks.length} 本教材并自动构建索引`)
     } else {
-      message.error(result.message)
+      message.error(result.message ?? '解析并索引完成')
     }
     await refreshList()
   } catch (error) {

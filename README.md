@@ -26,6 +26,14 @@ pytest tests/
 
 样例整合报告：[report/sample_integration_炎症.md](report/sample_integration_炎症.md)
 
+项目文档：
+
+- [需求分析](docs/需求分析.md)
+- [系统设计](docs/系统设计.md)
+- [Agent架构说明](docs/Agent架构说明.md)
+- [技术报告](report/technical_report.md)
+- [样例整合报告](report/sample_integration_炎症.md)
+
 
 HealthPDF Agent 是面向 7 本医学教材的"学科知识整合智能体"Demo。系统以 RAG 作为统一证据层，支持教材管理、标准 RAG Pipeline、知识小回答、跨教材知识图谱工作台、节点详情、教师反馈和 Markdown 整合报告导出。
 
@@ -58,6 +66,7 @@ HealthPDF Agent 是面向 7 本医学教材的"学科知识整合智能体"Demo�
 - 基于统一 RAG 证据层检索多本教材（每本 top-k，全球 top-k）；
 - 生成带 evidence_ids 的 GraphJSON；
 - 用 ECharts graph 展示可拖拽、可缩放、可点击图谱；
+- RAG 证据流桑基图：可视化展示“教材 → 章节 → 节点类型”的证据流向；
 - 点击节点显示定义、解释、跨教材重复/互补分析和来源；
 - 支持教师反馈：保留、删除、拆分、合并、修改说明；
 - 支持导出 Markdown 跨教材整合报告。

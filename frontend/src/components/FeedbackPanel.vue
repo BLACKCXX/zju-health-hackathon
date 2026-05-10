@@ -11,16 +11,24 @@
         <a-button @click="submit('merge')">合并</a-button>
         <a-button type="primary" @click="submit('edit')">修改说明</a-button>
       </a-space>
+      <a-alert
+        v-if="addedEvidenceCount > 0"
+        class="feedback-result"
+        type="success"
+        show-icon
+        :message="`已根据教师反馈追加 ${addedEvidenceCount} 条教材 evidence。`"
+      />
     </template>
   </a-card>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps<{
   targetId: string | null
   targetType?: 'node' | 'edge' | null
+  feedbackRecord?: Record<string, unknown> | null
 }>()
 
 const emit = defineEmits<{
@@ -28,6 +36,7 @@ const emit = defineEmits<{
 }>()
 
 const comment = ref('')
+const addedEvidenceCount = computed(() => Number(props.feedbackRecord?.added_evidence_count || 0))
 
 function submit(action: 'keep' | 'delete' | 'split' | 'merge' | 'edit') {
   if (!props.targetId) return
@@ -38,6 +47,10 @@ function submit(action: 'keep' | 'delete' | 'split' | 'merge' | 'edit') {
 
 <style scoped>
 .actions {
+  margin-top: 12px;
+}
+
+.feedback-result {
   margin-top: 12px;
 }
 </style>
