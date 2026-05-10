@@ -10,7 +10,8 @@ load_dotenv(BASE_DIR / ".env")
 
 DEFAULT_MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1/"
 DEFAULT_MODELSCOPE_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
-DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
+FALLBACK_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,13 @@ class Settings:
     index_file: Path
     outputs_dir: Path
     upload_dir: Path
+    embedding_model: str
+    graph_model: str
+    chunk_size: int
+    chunk_overlap: int
+    rag_top_k: int
+    graph_top_k_per_book: int
+    graph_global_top_k: int
 
 
 def _env(name: str, default: str = "") -> str:
@@ -55,7 +63,7 @@ def _path_from_env(name: str, default: Path) -> Path:
 
 def get_llm_config(role: str = "default") -> dict[str, str]:
     normalized_role = (role or "default").strip().lower()
-    if normalized_role not in {"default", "router", "answer", "summary"}:
+    if normalized_role not in {"default", "router", "answer", "summary", "graph"}:
         normalized_role = "default"
 
     default_api_key = _api_key("DEFAULT_API_KEY") or _api_key("OPENAI_API_KEY")
@@ -82,6 +90,13 @@ def get_embedding_config() -> dict[str, str]:
     }
 
 
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(_env(name, str(default)))
+    except ValueError:
+        return default
+
+
 def get_settings() -> Settings:
     default_llm = get_llm_config("default")
     index_dir = _path_from_env("INDEX_DIR", BASE_DIR / "indexes")
@@ -97,6 +112,13 @@ def get_settings() -> Settings:
         index_file=index_dir / "healthpdf_index.pkl",
         outputs_dir=outputs_dir,
         upload_dir=_path_from_env("UPLOAD_DIR", BASE_DIR / "uploads"),
+        embedding_model=_env("EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL,
+        graph_model=_env("GRAPH_MODEL") or _env("ANSWER_MODEL") or default_llm["model"],
+        chunk_size=_int_env("CHUNK_SIZE", 700),
+        chunk_overlap=_int_env("CHUNK_OVERLAP", 80),
+        rag_top_k=_int_env("RAG_TOP_K", 8),
+        graph_top_k_per_book=_int_env("GRAPH_TOP_K_PER_BOOK", 5),
+        graph_global_top_k=_int_env("GRAPH_GLOBAL_TOP_K", 30),
     )
 
 

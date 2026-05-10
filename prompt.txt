@@ -32,3 +32,17 @@ uvicorn backend.main:app --host 0.0.0.0 --port 18000 --reload
 
 cd /mnt/e/Hackthon/frontend
 npm run dev -- --host 0.0.0.0 --port 15173
+
+git commit -m "提交说明"
+
+
+cd /mnt/e/Hackthon
+conda activate zju_hackathon
+uvicorn backend.main:app --host 0.0.0.0 --port 18000 --reload
+
+
+
+
+cd /mnt/e/Hackthon/frontend
+npm install --registry=https://registry.npmmirror.com
+npm run dev -- --host 0.0.0.0 --port 15173

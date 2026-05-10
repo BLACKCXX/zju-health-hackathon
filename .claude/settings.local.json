@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from backend.main import app; print\\('Backend OK'\\)\")",
+      "Bash(npm run *)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

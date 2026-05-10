@@ -1,8 +1,6 @@
 <template>
   <a-card class="soft-card status-card" :bordered="false">
-    <template #title>
-      <span>系统状态</span>
-    </template>
+    <template #title>系统状态</template>
     <a-skeleton v-if="!status" active :paragraph="{ rows: 5 }" />
     <div v-else class="status-grid">
       <div class="status-row">
@@ -12,15 +10,7 @@
         </a-tag>
       </div>
       <div class="status-row">
-        <span>Answer 模型</span>
-        <b>{{ status.answer_model || '-' }}</b>
-      </div>
-      <div class="status-row">
-        <span>Embedding</span>
-        <b>{{ status.embedding_model || '-' }}</b>
-      </div>
-      <div class="status-row">
-        <span>PDF 数量</span>
+        <span>教材 PDF</span>
         <b>{{ status.pdf_count }}</b>
       </div>
       <div class="status-row">
@@ -34,8 +24,12 @@
         <b>{{ status.chunk_count || 0 }}</b>
       </div>
       <div class="status-row">
-        <span>检索缓存</span>
-        <b>Emb {{ status.has_embedding ? 'on' : 'off' }} / TF-IDF {{ status.has_tfidf ? 'on' : 'off' }}</b>
+        <span>检索后端</span>
+        <b>{{ status.retrieval_backend }}</b>
+      </div>
+      <div class="status-row">
+        <span>默认模型</span>
+        <b>{{ status.models?.default || '-' }}</b>
       </div>
     </div>
   </a-card>
@@ -43,23 +37,18 @@
 
 <script setup lang="ts">
 import type { SystemStatus } from '../types/api'
-
-defineProps<{
-  status: SystemStatus | null
-}>()
+defineProps<{ status: SystemStatus | null }>()
 </script>
 
 <style scoped>
 .status-card {
   overflow: hidden;
 }
-
 .status-grid {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-
 .status-row {
   display: flex;
   justify-content: space-between;
@@ -67,9 +56,8 @@ defineProps<{
   color: #475569;
   font-size: 13px;
 }
-
 .status-row b {
-  max-width: 170px;
+  max-width: 190px;
   color: #102033;
   text-align: right;
   word-break: break-word;

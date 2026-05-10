@@ -1,184 +1,194 @@
 from __future__ import annotations
 
-from pathlib import Path
-import shutil
 import time
 
-from fastapi import UploadFile
-
+from src.answer_report_agent import generate_ask_answer, generate_markdown_report, generate_node_detail
 from src.chunker import pages_to_chunks
-from src.config import get_settings, list_pdf_files
-from src.pdf_loader import load_textbook_pages
-from src.rag_pipeline import answer_question, get_environment_status, get_index_status
-from src.vector_store import VectorStore
+from src.config import get_llm_config, get_settings, has_api_key, list_pdf_files
+from src.graph_agent import build_graph, update_graph
+from src.integration_agent import apply_teacher_feedback
+from src.parser_agent import build_chunks_from_textbooks
+from src.retrieval_agent import RetrievalAgent
+from src.router_agent import route_user_intent
+from src.vector_store import VectorStore, get_saved_index_metadata
 
 from .schemas import (
-    BuildIndexRequest,
-    BuildIndexResponse,
+    AskRequest,
+    AskResponse,
     ChatRequest,
     ChatResponse,
-    IndexStatusResponse,
+    FeedbackRequest,
+    FeedbackResponse,
+    GraphBuildRequest,
+    GraphBuildResponse,
+    GraphUpdateRequest,
+    GraphUpdateResponse,
+    IndexBuildRequest,
+    IndexBuildResponse,
+    IntegratedGraphRequest,
+    IntegratedGraphResponse,
+    NodeDetailRequest,
+    NodeDetailResponse,
+    ReportExportRequest,
+    ReportExportResponse,
     RetrievedChunk,
     RouteInfo,
-    SystemStatus,
-    UploadPdfResponse,
+    SingleBookGraphRequest,
+    SingleBookGraphResponse,
+    StatusResponse,
 )
 
 
 USAGE_NOTE = "本系统仅用于学习与信息辅助理解，不提供医学诊断，不能替代医生建议。"
 
 
-def get_status() -> SystemStatus:
-    status = get_environment_status()
-    index = status.get("index", {})
-    return SystemStatus(
-        api_configured=bool(status.get("answer_api_configured") or status.get("api_configured")),
-        answer_model=status.get("answer_model", ""),
-        embedding_model=status.get("embedding_model", ""),
-        textbook_dir_exists=bool(status.get("textbook_dir_exists")),
-        pdf_count=int(status.get("pdf_count", 0)),
+def get_status() -> StatusResponse:
+    settings = get_settings()
+    index = get_saved_index_metadata(settings.index_file)
+    return StatusResponse(
+        api_configured=has_api_key("default"),
+        textbook_dir_exists=settings.textbook_dir.exists(),
+        pdf_count=len(list_pdf_files(settings.textbook_dir)),
         index_exists=bool(index.get("exists")),
         chunk_count=int(index.get("chunk_count", 0) or 0),
-        has_embedding=bool(index.get("has_embedding")),
-        has_tfidf=bool(index.get("has_tfidf")),
-        created_at=index.get("built_at") or index.get("created_at") or "",
+        retrieval_backend=settings.retrieval_backend,
+        models={
+            "default": get_llm_config("default")["model"],
+            "router": get_llm_config("router")["model"],
+            "graph": settings.graph_model,
+            "summary": get_llm_config("summary")["model"],
+        },
     )
 
 
-def get_index_status_response() -> IndexStatusResponse:
-    index = get_index_status()
-    return IndexStatusResponse(
-        index_exists=bool(index.get("exists")),
-        chunk_count=int(index.get("chunk_count", 0) or 0),
-        has_embedding=bool(index.get("has_embedding")),
-        has_tfidf=bool(index.get("has_tfidf")),
-        created_at=index.get("built_at") or index.get("created_at") or "",
-        embedding_model=index.get("embedding_model", ""),
-        retrieval_backend=index.get("retrieval_backend", ""),
-        pdf_files=list(index.get("pdf_files") or []),
+def build_index_service(request: IndexBuildRequest) -> IndexBuildResponse:
+    settings = get_settings()
+    if settings.index_file.exists() and not request.force:
+        index = get_saved_index_metadata(settings.index_file)
+        return IndexBuildResponse(success=True, message="索引已存在，未重建。", pdf_count=len(list_pdf_files(settings.textbook_dir)), chunk_count=int(index.get("chunk_count", 0) or 0))
+    if not settings.textbook_dir.exists() or not list_pdf_files(settings.textbook_dir):
+        return IndexBuildResponse(success=False, message="未发现教材 PDF。", pdf_count=0, chunk_count=0)
+    max_pages = request.max_pages_per_pdf if request.debug else None
+    chunks, errors = build_chunks_from_textbooks(max_pages_per_pdf=max_pages)
+    if not chunks:
+        return IndexBuildResponse(success=False, message="未提取到可索引文本。", pdf_count=len(list_pdf_files(settings.textbook_dir)), chunk_count=0)
+    store = VectorStore(settings.index_file)
+    store.build_index(
+        chunks,
+        use_embedding=settings.retrieval_backend in {"hybrid", "embedding"},
+        backend=settings.retrieval_backend,
+        pdf_files=[path.name for path in list_pdf_files(settings.textbook_dir)],
+        chunk_size=settings.chunk_size,
+        overlap=settings.chunk_overlap,
     )
+    store.save_index(settings.index_file)
+    msg = f"索引构建完成，chunk 数量 {len(chunks)}。"
+    if errors:
+        msg += f" 有 {len(errors)} 个文件读取异常。"
+    return IndexBuildResponse(success=True, message=msg, pdf_count=len(list_pdf_files(settings.textbook_dir)), chunk_count=len(chunks))
+
+
+def ask_service(request: AskRequest) -> AskResponse:
+    route = route_user_intent(request.question, current_mode="ask")
+    if route["intent"] == "greeting":
+        return AskResponse(
+            answer="你好，我是 HealthPDF Agent，可以基于 7 本医学教材做带引用的小回答，也可以生成跨教材知识图谱。",
+            keywords=[],
+            citations=[],
+            flashcards=[],
+            agent_trace=route,
+        )
+    evidence = RetrievalAgent().search(request.question, top_k=request.top_k)
+    payload = generate_ask_answer(request.question, evidence)
+    return AskResponse(**payload)
+
+
+def graph_build_service(request: GraphBuildRequest) -> GraphBuildResponse:
+    evidence = RetrievalAgent().search_for_graph(request.topic, per_book_k=request.top_k_per_book, global_top_k=request.global_top_k)
+    graph = build_graph(request.topic, evidence)
+    integration = graph.get("integration", {})
+    return GraphBuildResponse(
+        topic=request.topic,
+        graph=graph,
+        evidence=graph.get("evidence", []),
+        integration_summary=f"{integration.get('overlap_summary', '')} {integration.get('complement_summary', '')}".strip(),
+        agent_trace={"intent": "graph_build", "topic": request.topic, "retrieved_count": len(evidence)},
+    )
+
+
+def graph_single_book_service(request: SingleBookGraphRequest) -> SingleBookGraphResponse:
+    """Generate a knowledge graph for a single textbook."""
+    from src.graph_agent import build_single_book_graph
+    evidence = RetrievalAgent().search_for_single_book(request.textbook_id, request.chapter_id, top_k=request.top_k)
+    graph = build_single_book_graph(request.textbook_id, request.chapter_id, evidence)
+    return SingleBookGraphResponse(
+        graph=graph,
+        evidence=graph.get("evidence", []),
+        agent_trace={"intent": "single_book_graph", "textbook_id": request.textbook_id, "retrieved_count": len(evidence)},
+    )
+
+
+def graph_integrated_service(request: IntegratedGraphRequest) -> IntegratedGraphResponse:
+    """Generate an integrated knowledge graph across multiple textbooks."""
+    from src.graph_agent import build_integrated_graph
+    evidence = RetrievalAgent().search_for_integration(request.topic, request.textbook_ids, request.top_k_per_book, request.global_top_k)
+    graph = build_integrated_graph(request.topic, request.textbook_ids, evidence)
+    integration = graph.get("integration", {})
+    return IntegratedGraphResponse(
+        graph=graph,
+        integration_summary=f"{integration.get('overlap_summary', '')} {integration.get('complement_summary', '')}".strip(),
+        decisions=graph.get("decisions", []),
+        evidence=graph.get("evidence", []),
+    )
+
+
+def graph_update_service(request: GraphUpdateRequest) -> GraphUpdateResponse:
+    from src.graph_agent import apply_graph_instruction
+    evidence = RetrievalAgent().search_for_graph(request.instruction, global_top_k=20)
+    graph, patch = apply_graph_instruction(request.current_graph, request.instruction, evidence)
+    return GraphUpdateResponse(
+        graph=graph,
+        patch=patch,
+        feedback_record={"instruction": request.instruction, "retrieved_count": len(evidence)},
+    )
+
+
+def node_detail_service(request: NodeDetailRequest) -> NodeDetailResponse:
+    evidence = RetrievalAgent().search_for_node_detail(request.node_name, request.graph_context)
+    detail = generate_node_detail(request.node_id, request.node_name, request.graph_context, evidence)
+    return NodeDetailResponse(**detail)
+
+
+def feedback_service(request: FeedbackRequest) -> FeedbackResponse:
+    graph, record = apply_teacher_feedback(request.graph, request.model_dump())
+    return FeedbackResponse(success=True, updated_graph=graph, feedback_record=record)
+
+
+def report_export_service(request: ReportExportRequest) -> ReportExportResponse:
+    from src.answer_report_agent import generate_markdown_report
+    graph = request.graph
+    topic = graph.get("topic", "知识图谱")
+    feedback_records = graph.get("feedback_records", [])
+    markdown = generate_markdown_report(topic, graph, feedback_records)
+    mode = graph.get("mode", "integrated")
+    filename = f"{topic}_{'单本教材' if mode == 'single_book' else '跨教材整合'}报告.md"
+    return ReportExportResponse(markdown=markdown, filename=filename)
 
 
 def run_chat(request: ChatRequest) -> ChatResponse:
-    history = [item.model_dump() for item in request.history]
-    result = answer_question(
-        user_query=request.message,
-        history=history,
-        top_k=request.top_k,
-        force_pdf_search=request.force_pdf_search,
-    )
-    route_info = RouteInfo(**_normalize_route_info(result.get("query_plan", {})))
-    chunks = [_normalize_chunk(item) for item in result.get("contexts", [])]
+    answer = ask_service(AskRequest(question=request.message, top_k=request.top_k))
+    chunks = [
+        RetrievedChunk(
+            source_file=citation.book,
+            page=citation.page,
+            text=citation.quote,
+            match_type="evidence",
+        )
+        for citation in answer.citations
+    ]
     return ChatResponse(
-        answer=str(result.get("answer", "")),
-        route_info=route_info,
+        answer=answer.answer,
+        route_info=RouteInfo(intent="ask", need_pdf_search=True, search_keywords=answer.keywords),
         retrieved_chunks=chunks,
-        usage_note=str(result.get("warning") or USAGE_NOTE),
-    )
-
-
-def build_index(request: BuildIndexRequest) -> BuildIndexResponse:
-    settings = get_settings()
-    start = time.time()
-    if settings.index_file.exists() and not request.force:
-        status = get_index_status_response()
-        return BuildIndexResponse(
-            success=True,
-            message="索引已存在，未重建；如需重建请开启 force。",
-            pdf_count=len(list_pdf_files(settings.textbook_dir)),
-            chunk_count=status.chunk_count,
-            has_embedding=bool(status.has_embedding),
-            has_tfidf=bool(status.has_tfidf),
-            elapsed_sec=round(time.time() - start, 2),
-        )
-
-    if request.chunk_size <= request.overlap:
-        return BuildIndexResponse(
-            success=False,
-            message="chunk_size 必须大于 overlap。",
-            elapsed_sec=round(time.time() - start, 2),
-        )
-
-    pdf_files = list_pdf_files(settings.textbook_dir)
-    if not settings.textbook_dir.exists() or not pdf_files:
-        return BuildIndexResponse(
-            success=False,
-            message="当前部署环境未发现教材 PDF，可使用普通聊天或上传 PDF 后构建临时索引。",
-            elapsed_sec=round(time.time() - start, 2),
-        )
-
-    max_pages = request.max_pages_per_pdf if request.debug else None
-    pages, errors = load_textbook_pages(settings.textbook_dir, max_pages_per_pdf=max_pages)
-    chunks = pages_to_chunks(pages, chunk_size=request.chunk_size, overlap=request.overlap)
-    if not chunks:
-        return BuildIndexResponse(
-            success=False,
-            message="PDF 已扫描，但未提取到可索引文本。",
-            pdf_count=len(pdf_files),
-            elapsed_sec=round(time.time() - start, 2),
-        )
-
-    store = VectorStore(settings.index_file)
-    metadata = store.build_index(
-        chunks,
-        use_embedding=request.backend in {"hybrid", "embedding"},
-        backend=request.backend,
-        pdf_files=[path.name for path in pdf_files],
-        chunk_size=request.chunk_size,
-        overlap=request.overlap,
-    )
-    store.save_index(settings.index_file)
-    warning = metadata.get("embedding_warning", "")
-    if errors:
-        warning = (warning + " " if warning else "") + f"{len(errors)} 个 PDF 读取异常，已跳过。"
-
-    return BuildIndexResponse(
-        success=True,
-        message=f"索引构建完成：{len(pdf_files)} 个 PDF，{len(chunks)} 个 chunk。",
-        pdf_count=len(pdf_files),
-        chunk_count=len(chunks),
-        has_embedding=store.has_embedding,
-        has_tfidf=store.has_tfidf,
-        elapsed_sec=round(time.time() - start, 2),
-        warning=warning,
-    )
-
-
-async def save_uploaded_pdfs(files: list[UploadFile]) -> UploadPdfResponse:
-    settings = get_settings()
-    settings.upload_dir.mkdir(parents=True, exist_ok=True)
-    saved: list[str] = []
-    for upload in files:
-        filename = Path(upload.filename or "").name
-        if not filename.lower().endswith(".pdf"):
-            continue
-        target = settings.upload_dir / filename
-        with target.open("wb") as output:
-            shutil.copyfileobj(upload.file, output)
-        saved.append(filename)
-    if not saved:
-        return UploadPdfResponse(success=False, message="未保存文件：请上传 PDF 文件。", files=[])
-    return UploadPdfResponse(success=True, message=f"已保存 {len(saved)} 个 PDF 到 uploads/。", files=saved)
-
-
-def _normalize_route_info(plan: dict) -> dict:
-    return {
-        "intent": str(plan.get("intent") or "unknown"),
-        "need_pdf_search": bool(plan.get("need_pdf_search")),
-        "user_emotion_reply": str(plan.get("user_emotion_reply") or ""),
-        "search_keywords": list(plan.get("search_keywords") or []),
-        "expanded_query": str(plan.get("expanded_query") or ""),
-        "answer_focus": str(plan.get("answer_focus") or ""),
-        "conversation_goal": str(plan.get("conversation_goal") or ""),
-    }
-
-
-def _normalize_chunk(item: dict) -> RetrievedChunk:
-    return RetrievedChunk(
-        source_file=str(item.get("source_file") or ""),
-        page=int(item.get("page") or 0),
-        chunk_id=str(item.get("chunk_id") or ""),
-        score=float(item.get("score") or 0.0),
-        match_type=str(item.get("match_type") or ""),
-        text=str(item.get("text") or ""),
+        usage_note=USAGE_NOTE,
     )
